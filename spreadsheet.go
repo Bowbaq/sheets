@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"google.golang.org/api/sheets/v4"
+	sheets "google.golang.org/api/sheets/v4"
 )
 
 type Spreadsheet struct {
@@ -87,6 +87,10 @@ func (s *Sheet) UpdateFromPosition(data [][]string, start CellPos) error {
 		converted = append(converted, strToInterface(row))
 	}
 
+	return s.UpdateFromPositionIface(converted, start)
+}
+
+func (s *Sheet) UpdateFromPositionIface(data [][]interface{}, start CellPos) error {
 	cellRange := start.RangeForData(data)
 
 	sheetRange := fmt.Sprintf("%s!%s", s.Title(), cellRange.String())
@@ -94,7 +98,7 @@ func (s *Sheet) UpdateFromPosition(data [][]string, start CellPos) error {
 	// TODO: Resize sheet
 	vRange := &sheets.ValueRange{
 		Range:  sheetRange,
-		Values: converted,
+		Values: data,
 	}
 
 	req := s.Client.Sheets.Spreadsheets.Values.Update(s.Spreadsheet.Id(), sheetRange, vRange)
@@ -148,6 +152,10 @@ func (s *Spreadsheet) AddSheet(title string) (*Sheet, error) {
 
 func (s *Spreadsheet) Share(email string) error {
 	return s.Client.ShareFile(s.Id(), email)
+}
+
+func (s *Spreadsheet) ShareNotify(email string) error {
+	return s.Client.ShareFileNotify(s.Id(), email)
 }
 
 func TsvToArr(reader io.Reader, delimiter string) [][]string {

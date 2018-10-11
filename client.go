@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jwt"
-	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/sheets/v4"
+	drive "google.golang.org/api/drive/v3"
+	sheets "google.golang.org/api/sheets/v4"
 )
 
 type Client struct {
@@ -22,13 +22,21 @@ const (
 )
 
 func (c *Client) ShareFile(fileID, email string) error {
+	return c.shareFile(fileID, email, false)
+}
+
+func (c *Client) ShareFileNotify(fileID, email string) error {
+	return c.shareFile(fileID, email, true)
+}
+
+func (c *Client) shareFile(fileID, email string, notify bool) error {
 	perm := drive.Permission{
 		EmailAddress: email,
 		Role:         "writer",
 		Type:         "user",
 	}
 
-	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(false)
+	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
 
 	_, err := req.Do()
 	return err
@@ -44,6 +52,18 @@ func (c *Client) ListFiles(query string) ([]*drive.File, error) {
 	}
 
 	return r.Files, nil
+}
+
+func (c *Client) CopySpreadsheetFrom(fileID, newName string) (*Spreadsheet, error) {
+	file, err := c.Drive.Files.Copy(fileID, &drive.File{
+		Name: newName,
+	}).Do()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetSpreadsheet(file.Id)
 }
 
 func (c *Client) CreateSpreadsheetFromTsv(title string, reader io.Reader) (*Spreadsheet, error) {

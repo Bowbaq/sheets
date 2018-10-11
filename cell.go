@@ -18,7 +18,7 @@ func (c CellPos) A1Notation() string {
 	return fmt.Sprintf("%s%d", aRangeLetter(c.Col), c.Row+1)
 }
 
-func (c CellPos) RangeForData(data [][]string) CellRange {
+func (c CellPos) RangeForData(data [][]interface{}) CellRange {
 	bottomLeft := CellPos{c.Row + len(data) - 1, c.Col + len(data[0]) - 1}
 
 	return CellRange{Start: c, End: bottomLeft}
