@@ -1,17 +1,16 @@
 package sheets
 
 import (
-  "strings"
-  "testing"
+	"strings"
+	"testing"
 )
 
-
 var configTests = []struct {
-  config string
-  errExpected bool
+	config      string
+	errExpected bool
 }{
-  { "{}", true },
-  { `{
+	{"{}", true},
+	{`{
   "type": "service_account",
   "project_id": "testproject-123456",
   "private_key_id": "abcdef",
@@ -27,15 +26,15 @@ var configTests = []struct {
 
 func TestNewServiceAccountClient(t *testing.T) {
 
-  for _, tt := range configTests {
-    _, err := NewServiceAccountClient(strings.NewReader(tt.config))
+	for _, tt := range configTests {
+		_, err := NewServiceAccountClient(strings.NewReader(tt.config))
 
-    if tt.errExpected && err == nil{
-      t.Error("Expected error, but got none")
-    }
+		if tt.errExpected && err == nil {
+			t.Error("Expected error, but got none")
+		}
 
-    if !tt.errExpected && err != nil {
-      t.Error("Unexpected error: %v", err)
-    }
-  }
+		if !tt.errExpected && err != nil {
+			t.Error("Unexpected error: %v", err)
+		}
+	}
 }

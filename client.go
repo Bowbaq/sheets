@@ -1,20 +1,20 @@
 package sheets
 
 import (
-  "context"
-  "fmt"
-  "io"
-  "io/ioutil"
+	"context"
+	"fmt"
+	"io"
+	"io/ioutil"
 
-  "golang.org/x/oauth2/jwt"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/api/sheets/v4"
+	"golang.org/x/oauth2/jwt"
 	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/sheets/v4"
 )
 
 type Client struct {
 	Sheets *sheets.Service
-	Drive *drive.Service
+	Drive  *drive.Service
 }
 
 const (
@@ -22,39 +22,38 @@ const (
 )
 
 func (c *Client) ShareFile(fileID, email string) error {
-  perm := drive.Permission{
-    EmailAddress: email,
-    Role: "writer",
-    Type: "user",
-  }
+	perm := drive.Permission{
+		EmailAddress: email,
+		Role:         "writer",
+		Type:         "user",
+	}
 
-  req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(false)
+	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(false)
 
-
-  _, err := req.Do()
-  return err
+	_, err := req.Do()
+	return err
 }
 
 func (c *Client) ListFiles(query string) ([]*drive.File, error) {
 	r, err := c.Drive.Files.List().PageSize(10).
-			Q(query).
-			Fields("nextPageToken, files(id, name, mimeType)").Do()
+		Q(query).
+		Fields("nextPageToken, files(id, name, mimeType)").Do()
 
 	if err != nil {
-    return nil, err
+		return nil, err
 	}
 
-  return r.Files, nil
+	return r.Files, nil
 }
 
 func (c *Client) CreateSpreadsheetFromTsv(title string, reader io.Reader) (*Spreadsheet, error) {
-  arr := TsvToArr(reader, "\t")
-  return c.CreateSpreadsheetWithData(title, arr)
+	arr := TsvToArr(reader, "\t")
+	return c.CreateSpreadsheetWithData(title, arr)
 }
 
 func (c *Client) CreateSpreadsheetFromCsv(title string, reader io.Reader, delimiter string) (*Spreadsheet, error) {
-  arr := TsvToArr(reader, delimiter)
-  return c.CreateSpreadsheetWithData(title, arr)
+	arr := TsvToArr(reader, delimiter)
+	return c.CreateSpreadsheetWithData(title, arr)
 }
 
 func (c *Client) CreateSpreadsheet(title string) (*Spreadsheet, error) {
@@ -67,7 +66,7 @@ func (c *Client) CreateSpreadsheet(title string) (*Spreadsheet, error) {
 	}
 
 	ss := &Spreadsheet{
-		Client: c,
+		Client:      c,
 		Spreadsheet: ssInfo,
 	}
 
@@ -75,96 +74,94 @@ func (c *Client) CreateSpreadsheet(title string) (*Spreadsheet, error) {
 }
 
 func (c *Client) CreateSpreadsheetWithData(title string, data [][]string) (*Spreadsheet, error) {
-  ss, err := c.CreateSpreadsheet(title)
-  if err != nil {
-      return nil, err
-  }
+	ss, err := c.CreateSpreadsheet(title)
+	if err != nil {
+		return nil, err
+	}
 
-  sheetname := "Sheet1"
-  sheet := ss.GetSheet(sheetname)
-  if sheet == nil {
-    return nil, fmt.Errorf("Couldn't find sheet %s for %s", sheetname, ss.Id())
-  }
-  err = sheet.Update(data)
+	sheetname := "Sheet1"
+	sheet := ss.GetSheet(sheetname)
+	if sheet == nil {
+		return nil, fmt.Errorf("Couldn't find sheet %s for %s", sheetname, ss.Id())
+	}
+	err = sheet.Update(data)
 
-  return ss, err
+	return ss, err
 }
 
 func (c *Client) Delete(fileId string) error {
-  req := c.Drive.Files.Delete(fileId)
-  err := req.Do()
-  return err
+	req := c.Drive.Files.Delete(fileId)
+	err := req.Do()
+	return err
 }
 
 // Transfer ownership of the file
 func (c *Client) TransferOwnership(fileID, email string) error {
-  perm := drive.Permission{
-    EmailAddress: email,
-    Role: "owner",
-    Type: "user",
-  }
+	perm := drive.Permission{
+		EmailAddress: email,
+		Role:         "owner",
+		Type:         "user",
+	}
 
-  req := c.Drive.Permissions.Create(fileID, &perm).TransferOwnership(true)
-  _, err := req.Do()
-  return err
+	req := c.Drive.Permissions.Create(fileID, &perm).TransferOwnership(true)
+	_, err := req.Do()
+	return err
 }
 
 func (c *Client) GetSpreadsheet(spreadsheetId string) (*Spreadsheet, error) {
-  ssInfo, err := c.Sheets.Spreadsheets.Get(spreadsheetId).Do()
+	ssInfo, err := c.Sheets.Spreadsheets.Get(spreadsheetId).Do()
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
-  return &Spreadsheet{c, ssInfo}, nil
+	return &Spreadsheet{c, ssInfo}, nil
 }
 
 func (c *Client) GetSpreadsheetWithData(spreadsheetId string) (*Spreadsheet, error) {
-  ssInfo, err := c.Sheets.Spreadsheets.Get(spreadsheetId).IncludeGridData(true).Do()
+	ssInfo, err := c.Sheets.Spreadsheets.Get(spreadsheetId).IncludeGridData(true).Do()
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
-  return &Spreadsheet{c, ssInfo}, nil
+	return &Spreadsheet{c, ssInfo}, nil
 }
-
 
 func getServiceAccountConfig(reader io.Reader) (*jwt.Config, error) {
 	b, err := ioutil.ReadAll(reader)
 
 	if err != nil {
-    return nil, fmt.Errorf("Unable to read credentials file: %s", err)
+		return nil, fmt.Errorf("Unable to read credentials file: %s", err)
 	}
 
 	config, err := google.JWTConfigFromJSON(b, sheets.SpreadsheetsScope, drive.DriveScope)
 	if err != nil {
-    return nil, fmt.Errorf("Unable parse JWT config: %s", err)
+		return nil, fmt.Errorf("Unable parse JWT config: %s", err)
 	}
 
-  return config, nil
+	return config, nil
 }
 
 func NewServiceAccountClient(credsReader io.Reader) (*Client, error) {
-  config, err := getServiceAccountConfig(credsReader)
+	config, err := getServiceAccountConfig(credsReader)
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
 	ctx := context.Background()
 	client := config.Client(ctx)
 
 	sheetsSrv, err := sheets.New(client)
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
 	driveSrv, err := drive.New(client)
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
 	return &Client{sheetsSrv, driveSrv}, nil
 }
-
