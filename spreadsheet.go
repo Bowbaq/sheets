@@ -2,6 +2,7 @@ package sheets
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -37,6 +38,38 @@ func (s *Spreadsheet) GetSheet(title string) *Sheet {
 		}
 	}
 	return nil
+}
+
+func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
+	origin := s.GetSheet(title)
+	if origin == nil {
+		return nil, errors.New("origin sheet does not exist")
+	}
+
+	var maxIndex int64
+	for _, sheet := range s.Sheets {
+		if sheet.Properties.Index > maxIndex {
+			maxIndex = sheet.Properties.Index
+		}
+	}
+
+	_, err := s.DoBatch(&sheets.Request{
+		DuplicateSheet: &sheets.DuplicateSheetRequest{
+			InsertSheetIndex: maxIndex,
+			NewSheetName:     newTitle,
+			SourceSheetId:    origin.Properties.SheetId,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	duplicate := s.GetSheet(newTitle)
+	if duplicate == nil {
+		return nil, errors.New("duplicate sheet does not exist")
+	}
+
+	return duplicate, nil
 }
 
 func (s *Sheet) Title() string {
