@@ -55,7 +55,7 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 
 	_, err := s.DoBatch(&sheets.Request{
 		DuplicateSheet: &sheets.DuplicateSheetRequest{
-			InsertSheetIndex: maxIndex,
+			InsertSheetIndex: maxIndex + 1,
 			NewSheetName:     newTitle,
 			SourceSheetId:    origin.Properties.SheetId,
 		},
