@@ -40,6 +40,22 @@ func (s *Spreadsheet) GetSheet(title string) *Sheet {
 	return nil
 }
 
+func (s *Spreadsheet) DeleteSheet(title string) error {
+	query := strings.ToLower(title)
+	for _, sheet := range s.Sheets {
+		lowerTitle := strings.ToLower(sheet.Properties.Title)
+		if lowerTitle == query {
+			_, err := s.DoBatch(&sheets.Request{
+				DeleteSheet: &sheets.DeleteSheetRequest{
+					SheetId: sheet.Properties.SheetId,
+				},
+			})
+			return err
+		}
+	}
+	return errors.New("sheet does not exist")
+}
+
 func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 	origin := s.GetSheet(title)
 	if origin == nil {
@@ -189,6 +205,10 @@ func (s *Spreadsheet) Share(email string) error {
 
 func (s *Spreadsheet) ShareNotify(email string) error {
 	return s.Client.ShareFileNotify(s.Id(), email)
+}
+
+func (s *Spreadsheet) ShareWithAnyone() error {
+	return s.Client.ShareWithAnyone(s.Id())
 }
 
 func TsvToArr(reader io.Reader, delimiter string) [][]string {

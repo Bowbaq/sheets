@@ -29,6 +29,18 @@ func (c *Client) ShareFileNotify(fileID, email string) error {
 	return c.shareFile(fileID, email, true)
 }
 
+func (c *Client) ShareWithAnyone(fileID string) error {
+	perm := drive.Permission{
+		Role: "writer",
+		Type: "anyone",
+
+		AllowFileDiscovery: false,
+	}
+
+	_, err := c.Drive.Permissions.Create(fileID, &perm).Do()
+	return err
+}
+
 func (c *Client) shareFile(fileID, email string, notify bool) error {
 	perm := drive.Permission{
 		EmailAddress: email,
