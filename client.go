@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"time"
 
+	retry "github.com/avast/retry-go"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jwt"
 	drive "google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
 	sheets "google.golang.org/api/sheets/v4"
 )
 
@@ -37,8 +40,10 @@ func (c *Client) ShareWithAnyone(fileID string) error {
 		AllowFileDiscovery: false,
 	}
 
-	_, err := c.Drive.Permissions.Create(fileID, &perm).Do()
-	return err
+	return googleRetry(func() error {
+		_, err := c.Drive.Permissions.Create(fileID, &perm).Do()
+		return err
+	})
 }
 
 func (c *Client) shareFile(fileID, email string, notify bool) error {
@@ -47,30 +52,41 @@ func (c *Client) shareFile(fileID, email string, notify bool) error {
 		Role:         "writer",
 		Type:         "user",
 	}
-
 	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
 
-	_, err := req.Do()
-	return err
+	return googleRetry(func() error {
+		_, err := req.Do()
+		return err
+	})
 }
 
 func (c *Client) ListFiles(query string) ([]*drive.File, error) {
-	r, err := c.Drive.Files.List().PageSize(10).
-		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType)").Do()
+	var resp *drive.FileList
+	err := googleRetry(func() error {
+		var rerr error
+		resp, rerr = c.Drive.Files.List().PageSize(10).
+			Q(query).
+			Fields("nextPageToken, files(id, name, mimeType)").Do()
 
+		return rerr
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return r.Files, nil
+	return resp.Files, nil
 }
 
 func (c *Client) CopySpreadsheetFrom(fileID, newName string) (*Spreadsheet, error) {
-	file, err := c.Drive.Files.Copy(fileID, &drive.File{
-		Name: newName,
-	}).Do()
+	var file *drive.File
+	err := googleRetry(func() error {
+		var rerr error
+		file, rerr = c.Drive.Files.Copy(fileID, &drive.File{
+			Name: newName,
+		}).Do()
 
+		return rerr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +108,13 @@ func (c *Client) CreateSpreadsheet(title string) (*Spreadsheet, error) {
 	ssProps := &sheets.Spreadsheet{
 		Properties: &sheets.SpreadsheetProperties{Title: title},
 	}
-	ssInfo, err := c.Sheets.Spreadsheets.Create(ssProps).Do()
+	var ssInfo *sheets.Spreadsheet
+	err := googleRetry(func() error {
+		var rerr error
+		ssInfo, rerr = c.Sheets.Spreadsheets.Create(ssProps).Do()
+
+		return rerr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +145,10 @@ func (c *Client) CreateSpreadsheetWithData(title string, data [][]string) (*Spre
 
 func (c *Client) Delete(fileId string) error {
 	req := c.Drive.Files.Delete(fileId)
-	err := req.Do()
-	return err
+
+	return googleRetry(func() error {
+		return req.Do()
+	})
 }
 
 // Transfer ownership of the file
@@ -134,15 +158,22 @@ func (c *Client) TransferOwnership(fileID, email string) error {
 		Role:         "owner",
 		Type:         "user",
 	}
-
 	req := c.Drive.Permissions.Create(fileID, &perm).TransferOwnership(true)
-	_, err := req.Do()
-	return err
+
+	return googleRetry(func() error {
+		_, err := req.Do()
+		return err
+	})
 }
 
 func (c *Client) GetSpreadsheet(spreadsheetId string) (*Spreadsheet, error) {
-	ssInfo, err := c.Sheets.Spreadsheets.Get(spreadsheetId).Do()
+	var ssInfo *sheets.Spreadsheet
+	err := googleRetry(func() error {
+		var rerr error
+		ssInfo, rerr = c.Sheets.Spreadsheets.Get(spreadsheetId).Do()
 
+		return rerr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +182,13 @@ func (c *Client) GetSpreadsheet(spreadsheetId string) (*Spreadsheet, error) {
 }
 
 func (c *Client) GetSpreadsheetWithData(spreadsheetId string) (*Spreadsheet, error) {
-	ssInfo, err := c.Sheets.Spreadsheets.Get(spreadsheetId).IncludeGridData(true).Do()
+	var ssInfo *sheets.Spreadsheet
+	err := googleRetry(func() error {
+		var rerr error
+		ssInfo, rerr = c.Sheets.Spreadsheets.Get(spreadsheetId).IncludeGridData(true).Do()
 
+		return rerr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -196,4 +232,19 @@ func NewServiceAccountClient(credsReader io.Reader) (*Client, error) {
 	}
 
 	return &Client{sheetsSrv, driveSrv}, nil
+}
+
+func googleRetry(f func() error) error {
+	return retry.Do(
+		f,
+		retry.Delay(30*time.Second),
+		retry.Attempts(5),
+		retry.RetryIf(func(err error) bool {
+			if gerr, ok := err.(*googleapi.Error); ok {
+				return gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code <= 599)
+			}
+
+			return false
+		}),
+	)
 }

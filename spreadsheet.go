@@ -151,11 +151,12 @@ func (s *Sheet) UpdateFromPositionIface(data [][]interface{}, start CellPos) err
 	}
 
 	req := s.Client.Sheets.Spreadsheets.Values.Update(s.Spreadsheet.Id(), sheetRange, vRange)
-
 	req.ValueInputOption("USER_ENTERED")
-	_, err := req.Do()
 
-	return err
+	return googleRetry(func() error {
+		_, err := req.Do()
+		return err
+	})
 }
 
 func (s *Spreadsheet) DoBatch(reqs ...*sheets.Request) (*sheets.BatchUpdateSpreadsheetResponse, error) {
@@ -164,8 +165,12 @@ func (s *Spreadsheet) DoBatch(reqs ...*sheets.Request) (*sheets.BatchUpdateSprea
 		IncludeSpreadsheetInResponse: true,
 	}
 
-	resp, err := s.Client.Sheets.Spreadsheets.BatchUpdate(s.Id(), &batchUpdateReq).Do()
-
+	var resp *sheets.BatchUpdateSpreadsheetResponse
+	err := googleRetry(func() error {
+		var rerr error
+		resp, rerr = s.Client.Sheets.Spreadsheets.BatchUpdate(s.Id(), &batchUpdateReq).Do()
+		return rerr
+	})
 	if err != nil {
 		return nil, err
 	}
