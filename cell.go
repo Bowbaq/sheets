@@ -38,7 +38,7 @@ type SheetRange struct {
 	Range     CellRange
 }
 
-func (s *SheetRange) String() string {
+func (s SheetRange) String() string {
 	return fmt.Sprintf("%s!%s", s.SheetName, s.Range.String())
 }
 

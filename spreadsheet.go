@@ -92,12 +92,36 @@ func (s *Sheet) Title() string {
 	return s.Properties.Title
 }
 
-func (s *Sheet) Resize(rows, cols int) error {
-	return nil
+func (s *Sheet) TopLeft() CellPos {
+	return CellPos{0, 0}
 }
 
-func (*Sheet) TopLeft() CellPos {
-	return CellPos{0, 0}
+func (s *Sheet) BottomRight() CellPos {
+	if len(s.Data) == 0 {
+		return s.TopLeft()
+	}
+
+	rows := 0
+	cols := 0
+	if len(s.Data[0].RowData) > 0 {
+		rows = len(s.Data[0].RowData) - 1
+
+		if len(s.Data[0].RowData[0].Values) > 0 {
+			cols = len(s.Data[0].RowData[0].Values) - 1
+		}
+	}
+
+	return CellPos{Row: rows, Col: cols}
+}
+
+func (s *Sheet) DataRange() SheetRange {
+	return SheetRange{
+		SheetName: s.Properties.Title,
+		Range: CellRange{
+			Start: s.TopLeft(),
+			End:   s.BottomRight(),
+		},
+	}
 }
 
 func (s *Sheet) Update(data [][]string) error {
@@ -151,6 +175,22 @@ func (s *Sheet) UpdateFromPositionIface(data [][]interface{}, start CellPos) err
 	}
 
 	req := s.Client.Sheets.Spreadsheets.Values.Update(s.Spreadsheet.Id(), sheetRange, vRange)
+	req.ValueInputOption("USER_ENTERED")
+
+	return googleRetry(func() error {
+		_, err := req.Do()
+		return err
+	})
+}
+
+func (s *Sheet) Append(data [][]interface{}) error {
+	req := s.Client.Sheets.Spreadsheets.Values.Append(
+		s.Spreadsheet.Id(),
+		s.DataRange().String(),
+		&sheets.ValueRange{
+			Values: data,
+		},
+	)
 	req.ValueInputOption("USER_ENTERED")
 
 	return googleRetry(func() error {

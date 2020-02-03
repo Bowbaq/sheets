@@ -34,7 +34,7 @@ func TestNewServiceAccountClient(t *testing.T) {
 		}
 
 		if !tt.errExpected && err != nil {
-			t.Error("Unexpected error: %v", err)
+			t.Errorf("Unexpected error: %v", err)
 		}
 	}
 }

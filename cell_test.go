@@ -50,9 +50,9 @@ var rangeTests = []struct {
 
 func TestRange(t *testing.T) {
 	for _, tt := range rangeTests {
-		var data [][]string
+		var data [][]interface{}
 		for i := 0; i < tt.height; i++ {
-			var row []string
+			var row []interface{}
 			for j := 0; j < tt.width; j++ {
 				row = append(row, "1")
 			}
