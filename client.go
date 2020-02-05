@@ -52,11 +52,7 @@ func (c *Client) shareFile(fileID, email string, notify bool) error {
 		Role:         "writer",
 		Type:         "user",
 	}
-
-	req := c.Drive.Permissions.Create(fileID, &perm)
-	if notify {
-		req.SendNotificationEmail(true)
-	}
+	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
 
 	return googleRetry(func() error {
 		_, err := req.Do()
