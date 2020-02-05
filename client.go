@@ -52,7 +52,11 @@ func (c *Client) shareFile(fileID, email string, notify bool) error {
 		Role:         "writer",
 		Type:         "user",
 	}
-	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
+
+	req := c.Drive.Permissions.Create(fileID, &perm)
+	if notify {
+		req.SendNotificationEmail(true)
+	}
 
 	return googleRetry(func() error {
 		_, err := req.Do()
@@ -241,7 +245,19 @@ func googleRetry(f func() error) error {
 		retry.Attempts(5),
 		retry.RetryIf(func(err error) bool {
 			if gerr, ok := err.(*googleapi.Error); ok {
-				return gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code <= 599)
+				switch {
+				case gerr.Code == 429:
+					return true
+
+				case (gerr.Code >= 500 && gerr.Code <= 599):
+					return true
+
+				case gerr.Code == 403 && gerr.Message == "Rate Limit Exceeded":
+					return true
+
+				default:
+					return false
+				}
 			}
 
 			return false
