@@ -8,6 +8,7 @@ import (
 	"time"
 
 	retry "github.com/avast/retry-go"
+	"github.com/pkg/errors"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jwt"
 	drive "google.golang.org/api/drive/v3"
@@ -16,6 +17,8 @@ import (
 )
 
 type Client struct {
+	JWTConfig *jwt.Config
+
 	Sheets *sheets.Service
 	Drive  *drive.Service
 }
@@ -58,6 +61,31 @@ func (c *Client) shareFile(fileID, email string, notify bool) error {
 		_, err := req.Do()
 		return err
 	})
+}
+
+func (c *Client) Revoke(fileID, email string) error {
+	var permissions *drive.PermissionList
+	err := googleRetry(func() error {
+		var rerr error
+		permissions, rerr = c.Drive.Permissions.List(fileID).Fields("nextPageToken, permissions(id, emailAddress, type, role)").Do()
+
+		return rerr
+	})
+	if err != nil {
+		return errors.Wrapf(err, "couldn't list permissions for %s", fileID)
+	}
+
+	for _, p := range permissions.Permissions {
+		if p.EmailAddress != email {
+			continue
+		}
+
+		return googleRetry(func() error {
+			return c.Drive.Permissions.Delete(fileID, p.Id).Do()
+		})
+	}
+
+	return nil
 }
 
 func (c *Client) ListFiles(query string) ([]*drive.File, error) {
@@ -231,7 +259,12 @@ func NewServiceAccountClient(credsReader io.Reader) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{sheetsSrv, driveSrv}, nil
+	return &Client{
+		JWTConfig: config,
+
+		Sheets: sheetsSrv,
+		Drive:  driveSrv,
+	}, nil
 }
 
 func googleRetry(f func() error) error {
