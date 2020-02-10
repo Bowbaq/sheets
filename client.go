@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"time"
 
 	retry "github.com/avast/retry-go"
@@ -270,22 +271,31 @@ func NewServiceAccountClient(credsReader io.Reader) (*Client, error) {
 func googleRetry(f func() error) error {
 	return retry.Do(
 		f,
-		retry.Delay(30*time.Second),
+		retry.Delay(15*time.Second),
 		retry.Attempts(5),
 		retry.RetryIf(func(err error) bool {
+			// Retry network errors, sometimes Google's API craps out
+			if _, ok := err.(*net.OpError); ok {
+				return true
+			}
+			if err == io.EOF {
+				return true
+			}
+
+			// Retry more specific Google API errors
 			if gerr, ok := err.(*googleapi.Error); ok {
 				switch {
+				// Too many requests
 				case gerr.Code == 429:
 					return true
 
-				case (gerr.Code >= 500 && gerr.Code <= 599):
-					return true
-
+				// Too many requests as a 403
 				case gerr.Code == 403 && gerr.Message == "Rate Limit Exceeded":
 					return true
 
-				default:
-					return false
+				// Server error. This may lead to duplicates, calling code must check for that
+				case (gerr.Code >= 500 && gerr.Code <= 599):
+					return true
 				}
 			}
 

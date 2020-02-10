@@ -2,11 +2,14 @@ package sheets
 
 import (
 	"bufio"
-	"errors"
+
 	"fmt"
 	"io"
 	"strings"
 
+	retry "github.com/avast/retry-go"
+	"github.com/pkg/errors"
+	"google.golang.org/api/googleapi"
 	sheets "google.golang.org/api/sheets/v4"
 )
 
@@ -76,8 +79,8 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 			SourceSheetId:    origin.Properties.SheetId,
 		},
 	})
-	if err != nil {
-		return nil, err
+	if err != nil && !isDuplicateSheetError(err) {
+		return nil, errors.Wrap(err, "couldn't duplicate sheet")
 	}
 
 	duplicate := s.GetSheet(newTitle)
@@ -86,6 +89,23 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 	}
 
 	return duplicate, nil
+}
+
+func isDuplicateSheetError(err error) bool {
+	rerr, ok := err.(retry.Error)
+	if !ok {
+		return false
+	}
+
+	for _, e := range rerr.WrappedErrors() {
+		if gerr, ok := e.(*googleapi.Error); ok {
+			if gerr.Code == 400 && strings.Contains(gerr.Message, "duplicateSheet") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (s *Sheet) Title() string {
