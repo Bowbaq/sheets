@@ -65,6 +65,11 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 		return nil, errors.New("origin sheet does not exist")
 	}
 
+	alreadyExists := s.GetSheet(newTitle)
+	if alreadyExists != nil {
+		return nil, errors.New("destination sheet already exist")
+	}
+
 	var maxIndex int64
 	for _, sheet := range s.Sheets {
 		if sheet.Properties.Index > maxIndex {
@@ -79,7 +84,7 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 			SourceSheetId:    origin.Properties.SheetId,
 		},
 	})
-	if err != nil && !isDuplicateSheetError(err) {
+	if err != nil && !isFakeDuplicateSheetError(err) {
 		return nil, errors.Wrap(err, "couldn't duplicate sheet")
 	}
 
@@ -91,21 +96,29 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 	return duplicate, nil
 }
 
-func isDuplicateSheetError(err error) bool {
+func isFakeDuplicateSheetError(err error) bool {
 	rerr, ok := err.(retry.Error)
 	if !ok {
 		return false
 	}
 
-	for _, e := range rerr.WrappedErrors() {
+	var (
+		firstErrorIsNotDuplicate = true
+		hasSubsequentDuplicate   = false
+	)
+	for i, e := range rerr.WrappedErrors() {
 		if gerr, ok := e.(*googleapi.Error); ok {
 			if gerr.Code == 400 && strings.Contains(gerr.Message, "duplicateSheet") {
-				return true
+				if i == 0 {
+					firstErrorIsNotDuplicate = false
+				} else {
+					hasSubsequentDuplicate = true
+				}
 			}
 		}
 	}
 
-	return false
+	return firstErrorIsNotDuplicate && hasSubsequentDuplicate
 }
 
 func (s *Sheet) Title() string {
