@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 
 	retry "github.com/avast/retry-go"
@@ -276,6 +277,9 @@ func googleRetry(f func() error) error {
 		retry.RetryIf(func(err error) bool {
 			// Retry network errors, sometimes Google's API craps out
 			if _, ok := err.(*net.OpError); ok {
+				return true
+			}
+			if strings.Contains(err.Error(), "connection reset by peer") {
 				return true
 			}
 			if err == io.EOF {
