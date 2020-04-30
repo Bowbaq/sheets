@@ -2,6 +2,7 @@ package sheets
 
 import (
 	"bufio"
+	"os"
 
 	"fmt"
 	"io"
@@ -40,6 +41,7 @@ func (s *Spreadsheet) GetSheet(title string) *Sheet {
 			return &Sheet{sheet, s, s.Client}
 		}
 	}
+
 	return nil
 }
 
@@ -84,8 +86,17 @@ func (s *Spreadsheet) DuplicateSheet(title, newTitle string) (*Sheet, error) {
 			SourceSheetId:    origin.Properties.SheetId,
 		},
 	})
-	if err != nil && !isFakeDuplicateSheetError(err) {
-		return nil, errors.Wrap(err, "couldn't duplicate sheet")
+	if err != nil {
+		if !isFakeDuplicateSheetError(err) {
+			return nil, errors.Wrap(err, "couldn't duplicate sheet")
+		}
+
+		// Need to make sure that we've got the latest state of the sheet
+		currentSheet, err := s.Client.GetSpreadsheet(s.Id())
+		if err != nil {
+			return nil, errors.Wrap(err, "error refreshing spreadsheet after fake duplicate error")
+		}
+		s.Spreadsheet = currentSheet.Spreadsheet
 	}
 
 	duplicate := s.GetSheet(newTitle)
@@ -107,6 +118,8 @@ func isFakeDuplicateSheetError(err error) bool {
 		hasSubsequentDuplicate   = false
 	)
 	for i, e := range rerr.WrappedErrors() {
+		fmt.Fprintf(os.Stderr, "%d - %v\n", i, e)
+
 		if gerr, ok := e.(*googleapi.Error); ok {
 			if gerr.Code == 400 && strings.Contains(gerr.Message, "duplicateSheet") {
 				if i == 0 {
