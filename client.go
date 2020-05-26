@@ -25,69 +25,54 @@ type Client struct {
 	Drive  *drive.Service
 }
 
-const (
-	sheetMimeType = "application/vnd.google-apps.spreadsheet"
-)
-
-func (c *Client) ShareFile(fileID, email string) error {
-	return c.shareFile(fileID, email, false)
-}
-
-func (c *Client) ShareFileNotify(fileID, email string) error {
-	return c.shareFile(fileID, email, true)
-}
-
-func (c *Client) ShareWithAnyone(fileID string) error {
-	perm := drive.Permission{
-		Role: "writer",
-		Type: "anyone",
-
-		AllowFileDiscovery: false,
-	}
-
-	return googleRetry(func() error {
-		_, err := c.Drive.Permissions.Create(fileID, &perm).Do()
-		return err
-	})
-}
-
-func (c *Client) shareFile(fileID, email string, notify bool) error {
-	perm := drive.Permission{
-		EmailAddress: email,
-		Role:         "writer",
-		Type:         "user",
-	}
-	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
-
-	return googleRetry(func() error {
-		_, err := req.Do()
-		return err
-	})
-}
-
-func (c *Client) Revoke(fileID, email string) error {
-	var permissions *drive.PermissionList
-	err := googleRetry(func() error {
-		var rerr error
-		permissions, rerr = c.Drive.Permissions.List(fileID).Fields("nextPageToken, permissions(id, emailAddress, type, role)").Do()
-
-		return rerr
-	})
+func NewServiceAccountClientFromReader(creds io.Reader) (*Client, error) {
+	jwtJSON, err := ioutil.ReadAll(creds)
 	if err != nil {
-		return errors.Wrapf(err, "couldn't list permissions for %s", fileID)
+		return nil, errors.Wrap(err, "unable to read credentials")
 	}
 
-	for _, p := range permissions.Permissions {
-		if p.EmailAddress != email {
-			continue
-		}
-
-		return googleRetry(func() error {
-			return c.Drive.Permissions.Delete(fileID, p.Id).Do()
-		})
+	config, err := google.JWTConfigFromJSON(jwtJSON, sheets.SpreadsheetsScope, drive.DriveScope)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to parse JWT config")
 	}
 
-	return nil
+	return NewClientFromConfig(config)
+}
+
+func NewImpersonatingServiceAccountClient(creds io.Reader, userEmail string) (*Client, error) {
+	jwtJSON, err := ioutil.ReadAll(creds)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to read credentials")
+	}
+
+	config, err := google.JWTConfigFromJSON(jwtJSON, sheets.SpreadsheetsScope, drive.DriveScope)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to parse JWT config")
+	}
+	config.Subject = userEmail
+
+	return NewClientFromConfig(config)
+}
+
+func NewClientFromConfig(config *jwt.Config) (*Client, error) {
+	client := config.Client(context.Background())
+
+	sheetsSrv, err := sheets.New(client)
+	if err != nil {
+		return nil, errors.Wrap(err, "couldn't initialize sheets client")
+	}
+
+	driveSrv, err := drive.New(client)
+	if err != nil {
+		return nil, errors.Wrap(err, "couldn't initialize drive client")
+	}
+
+	return &Client{
+		JWTConfig: config,
+
+		Sheets: sheetsSrv,
+		Drive:  driveSrv,
+	}, nil
 }
 
 func (c *Client) ListFiles(query string) ([]*drive.File, error) {
@@ -173,29 +158,6 @@ func (c *Client) CreateSpreadsheetWithData(title string, data [][]string) (*Spre
 	return ss, err
 }
 
-func (c *Client) Delete(fileId string) error {
-	req := c.Drive.Files.Delete(fileId)
-
-	return googleRetry(func() error {
-		return req.Do()
-	})
-}
-
-// Transfer ownership of the file
-func (c *Client) TransferOwnership(fileID, email string) error {
-	perm := drive.Permission{
-		EmailAddress: email,
-		Role:         "owner",
-		Type:         "user",
-	}
-	req := c.Drive.Permissions.Create(fileID, &perm).TransferOwnership(true)
-
-	return googleRetry(func() error {
-		_, err := req.Do()
-		return err
-	})
-}
-
 func (c *Client) GetSpreadsheet(spreadsheetId string) (*Spreadsheet, error) {
 	var ssInfo *sheets.Spreadsheet
 	err := googleRetry(func() error {
@@ -226,47 +188,88 @@ func (c *Client) GetSpreadsheetWithData(spreadsheetId string) (*Spreadsheet, err
 	return &Spreadsheet{c, ssInfo}, nil
 }
 
-func getServiceAccountConfig(reader io.Reader) (*jwt.Config, error) {
-	b, err := ioutil.ReadAll(reader)
+func (c *Client) Delete(fileId string) error {
+	req := c.Drive.Files.Delete(fileId)
 
-	if err != nil {
-		return nil, fmt.Errorf("Unable to read credentials file: %s", err)
-	}
-
-	config, err := google.JWTConfigFromJSON(b, sheets.SpreadsheetsScope, drive.DriveScope)
-	if err != nil {
-		return nil, fmt.Errorf("Unable parse JWT config: %s", err)
-	}
-
-	return config, nil
+	return googleRetry(func() error {
+		return req.Do()
+	})
 }
 
-func NewServiceAccountClient(credsReader io.Reader) (*Client, error) {
-	config, err := getServiceAccountConfig(credsReader)
+func (c *Client) ShareFile(fileID, email string) error {
+	return c.shareFile(fileID, email, false)
+}
 
-	if err != nil {
-		return nil, err
+func (c *Client) ShareFileNotify(fileID, email string) error {
+	return c.shareFile(fileID, email, true)
+}
+
+func (c *Client) ShareWithAnyone(fileID string) error {
+	perm := drive.Permission{
+		Role: "writer",
+		Type: "anyone",
+
+		AllowFileDiscovery: false,
 	}
 
-	ctx := context.Background()
-	client := config.Client(ctx)
+	return googleRetry(func() error {
+		_, err := c.Drive.Permissions.Create(fileID, &perm).Do()
+		return err
+	})
+}
 
-	sheetsSrv, err := sheets.New(client)
+func (c *Client) shareFile(fileID, email string, notify bool) error {
+	perm := drive.Permission{
+		EmailAddress: email,
+		Role:         "writer",
+		Type:         "user",
+	}
+	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
+
+	return googleRetry(func() error {
+		_, err := req.Do()
+		return err
+	})
+}
+
+func (c *Client) Revoke(fileID, email string) error {
+	var permissions *drive.PermissionList
+	err := googleRetry(func() error {
+		var rerr error
+		permissions, rerr = c.Drive.Permissions.List(fileID).Fields("nextPageToken, permissions(id, emailAddress, type, role)").Do()
+
+		return rerr
+	})
 	if err != nil {
-		return nil, err
+		return errors.Wrapf(err, "couldn't list permissions for %s", fileID)
 	}
 
-	driveSrv, err := drive.New(client)
-	if err != nil {
-		return nil, err
+	for _, p := range permissions.Permissions {
+		if p.EmailAddress != email {
+			continue
+		}
+
+		return googleRetry(func() error {
+			return c.Drive.Permissions.Delete(fileID, p.Id).Do()
+		})
 	}
 
-	return &Client{
-		JWTConfig: config,
+	return nil
+}
 
-		Sheets: sheetsSrv,
-		Drive:  driveSrv,
-	}, nil
+// Transfer ownership of the file
+func (c *Client) TransferOwnership(fileID, email string) error {
+	perm := drive.Permission{
+		EmailAddress: email,
+		Role:         "owner",
+		Type:         "user",
+	}
+	req := c.Drive.Permissions.Create(fileID, &perm).TransferOwnership(true)
+
+	return googleRetry(func() error {
+		_, err := req.Do()
+		return err
+	})
 }
 
 func googleRetry(f func() error) error {

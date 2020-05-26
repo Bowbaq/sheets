@@ -118,8 +118,6 @@ func isFakeDuplicateSheetError(err error) bool {
 		hasSubsequentDuplicate   = false
 	)
 	for i, e := range rerr.WrappedErrors() {
-		fmt.Fprintf(os.Stderr, "%d - %v\n", i, e)
-
 		if gerr, ok := e.(*googleapi.Error); ok {
 			if gerr.Code == 400 && strings.Contains(gerr.Message, "duplicateSheet") {
 				if i == 0 {
@@ -128,6 +126,9 @@ func isFakeDuplicateSheetError(err error) bool {
 					hasSubsequentDuplicate = true
 				}
 			}
+		}
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "%d - %v\n", i, e)
 		}
 	}
 

@@ -25,9 +25,8 @@ var configTests = []struct {
 }
 
 func TestNewServiceAccountClient(t *testing.T) {
-
 	for _, tt := range configTests {
-		_, err := NewServiceAccountClient(strings.NewReader(tt.config))
+		_, err := NewServiceAccountClientFromReader(strings.NewReader(tt.config))
 
 		if tt.errExpected && err == nil {
 			t.Error("Expected error, but got none")
