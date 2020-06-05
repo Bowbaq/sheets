@@ -187,8 +187,8 @@ func (s *Sheet) GetContents() ([][]string, error) {
 	for rowNum, rowData := range data.RowData {
 		row := make([]string, len(rowData.Values))
 		for colIdx, value := range rowData.Values {
-			if value.EffectiveValue != nil {
-				row[colIdx] = value.EffectiveValue.StringValue
+			if value.EffectiveValue != nil && value.EffectiveValue.StringValue != nil {
+				row[colIdx] = *value.EffectiveValue.StringValue
 			} else {
 				row[colIdx] = ""
 			}
