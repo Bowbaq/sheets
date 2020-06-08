@@ -135,6 +135,47 @@ func isFakeDuplicateSheetError(err error) bool {
 	return firstErrorIsNotDuplicate && hasSubsequentDuplicate
 }
 
+func (s *Spreadsheet) AddProtectedRange(req *sheets.AddProtectedRangeRequest) error {
+	_, err := s.DoBatch(&sheets.Request{
+		AddProtectedRange: req,
+	})
+	if err != nil {
+		if !isFakeProtectedRangeError(err) {
+			return errors.Wrap(err, "couldn't add protected range to sheet")
+		}
+	}
+
+	return nil
+}
+
+func isFakeProtectedRangeError(err error) bool {
+	rerr, ok := err.(retry.Error)
+	if !ok {
+		return false
+	}
+
+	var (
+		firstErrorIsNotBadRequest = true
+		hasSubsequentBadRequest   = false
+	)
+	for i, e := range rerr.WrappedErrors() {
+		if gerr, ok := e.(*googleapi.Error); ok {
+			if gerr.Code == 400 && strings.Contains(gerr.Message, "addProtectedRange") {
+				if i == 0 {
+					firstErrorIsNotBadRequest = false
+				} else {
+					hasSubsequentBadRequest = true
+				}
+			}
+		}
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "%d - %v\n", i, e)
+		}
+	}
+
+	return firstErrorIsNotBadRequest && hasSubsequentBadRequest
+}
+
 func (s *Sheet) Title() string {
 	return s.Properties.Title
 }
@@ -225,7 +266,31 @@ func (s *Sheet) UpdateFromPositionIface(data [][]interface{}, start CellPos) err
 	req.ValueInputOption("USER_ENTERED")
 
 	return googleRetry(func() error {
-		_, err := req.Do()
+		_, err := req.Do(s.Client.options...)
+		return err
+	})
+}
+
+type ValueUpdateRequest struct {
+	Start CellPos
+
+	Data [][]interface{}
+}
+
+func (s *Sheet) BatchUpdateFromPositionIface(requests ...*ValueUpdateRequest) error {
+	updates := sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "USER_ENTERED",
+	}
+
+	for i := range requests {
+		updates.Data = append(updates.Data, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!%s", s.Title(), requests[i].Start.RangeForData(requests[i].Data).String()),
+			Values: requests[i].Data,
+		})
+	}
+
+	return googleRetry(func() error {
+		_, err := s.Client.Sheets.Spreadsheets.Values.BatchUpdate(s.Spreadsheet.Id(), &updates).Do(s.Client.options...)
 		return err
 	})
 }
@@ -241,7 +306,7 @@ func (s *Sheet) Append(data [][]interface{}) error {
 	req.ValueInputOption("USER_ENTERED")
 
 	return googleRetry(func() error {
-		_, err := req.Do()
+		_, err := req.Do(s.Client.options...)
 		return err
 	})
 }
@@ -255,7 +320,7 @@ func (s *Spreadsheet) DoBatch(reqs ...*sheets.Request) (*sheets.BatchUpdateSprea
 	var resp *sheets.BatchUpdateSpreadsheetResponse
 	err := googleRetry(func() error {
 		var rerr error
-		resp, rerr = s.Client.Sheets.Spreadsheets.BatchUpdate(s.Id(), &batchUpdateReq).Do()
+		resp, rerr = s.Client.Sheets.Spreadsheets.BatchUpdate(s.Id(), &batchUpdateReq).Do(s.Client.options...)
 		return rerr
 	})
 	if err != nil {

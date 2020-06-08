@@ -23,6 +23,8 @@ type Client struct {
 
 	Sheets *sheets.Service
 	Drive  *drive.Service
+
+	options []googleapi.CallOption
 }
 
 func NewServiceAccountClientFromReader(creds io.Reader) (*Client, error) {
@@ -75,13 +77,17 @@ func NewClientFromConfig(config *jwt.Config) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) AddOptions(opts ...googleapi.CallOption) {
+	c.options = append(c.options, opts...)
+}
+
 func (c *Client) ListFiles(query string) ([]*drive.File, error) {
 	var resp *drive.FileList
 	err := googleRetry(func() error {
 		var rerr error
 		resp, rerr = c.Drive.Files.List().PageSize(10).
 			Q(query).
-			Fields("nextPageToken, files(id, name, mimeType)").Do()
+			Fields("nextPageToken, files(id, name, mimeType)").Do(c.options...)
 
 		return rerr
 	})
@@ -98,7 +104,7 @@ func (c *Client) CopySpreadsheetFrom(fileID, newName string) (*Spreadsheet, erro
 		var rerr error
 		file, rerr = c.Drive.Files.Copy(fileID, &drive.File{
 			Name: newName,
-		}).Do()
+		}).Do(c.options...)
 
 		return rerr
 	})
@@ -126,7 +132,7 @@ func (c *Client) CreateSpreadsheet(title string) (*Spreadsheet, error) {
 	var ssInfo *sheets.Spreadsheet
 	err := googleRetry(func() error {
 		var rerr error
-		ssInfo, rerr = c.Sheets.Spreadsheets.Create(ssProps).Do()
+		ssInfo, rerr = c.Sheets.Spreadsheets.Create(ssProps).Do(c.options...)
 
 		return rerr
 	})
@@ -162,7 +168,7 @@ func (c *Client) GetSpreadsheet(spreadsheetId string) (*Spreadsheet, error) {
 	var ssInfo *sheets.Spreadsheet
 	err := googleRetry(func() error {
 		var rerr error
-		ssInfo, rerr = c.Sheets.Spreadsheets.Get(spreadsheetId).Do()
+		ssInfo, rerr = c.Sheets.Spreadsheets.Get(spreadsheetId).Do(c.options...)
 
 		return rerr
 	})
@@ -177,7 +183,7 @@ func (c *Client) GetSpreadsheetWithData(spreadsheetId string) (*Spreadsheet, err
 	var ssInfo *sheets.Spreadsheet
 	err := googleRetry(func() error {
 		var rerr error
-		ssInfo, rerr = c.Sheets.Spreadsheets.Get(spreadsheetId).IncludeGridData(true).Do()
+		ssInfo, rerr = c.Sheets.Spreadsheets.Get(spreadsheetId).IncludeGridData(true).Do(c.options...)
 
 		return rerr
 	})
@@ -192,7 +198,7 @@ func (c *Client) Delete(fileId string) error {
 	req := c.Drive.Files.Delete(fileId)
 
 	return googleRetry(func() error {
-		return req.Do()
+		return req.Do(c.options...)
 	})
 }
 
@@ -213,7 +219,7 @@ func (c *Client) ShareWithAnyone(fileID string) error {
 	}
 
 	return googleRetry(func() error {
-		_, err := c.Drive.Permissions.Create(fileID, &perm).Do()
+		_, err := c.Drive.Permissions.Create(fileID, &perm).Do(c.options...)
 		return err
 	})
 }
@@ -227,7 +233,7 @@ func (c *Client) shareFile(fileID, email string, notify bool) error {
 	req := c.Drive.Permissions.Create(fileID, &perm).SendNotificationEmail(notify)
 
 	return googleRetry(func() error {
-		_, err := req.Do()
+		_, err := req.Do(c.options...)
 		return err
 	})
 }
@@ -236,7 +242,7 @@ func (c *Client) Revoke(fileID, email string) error {
 	var permissions *drive.PermissionList
 	err := googleRetry(func() error {
 		var rerr error
-		permissions, rerr = c.Drive.Permissions.List(fileID).Fields("nextPageToken, permissions(id, emailAddress, type, role)").Do()
+		permissions, rerr = c.Drive.Permissions.List(fileID).Fields("nextPageToken, permissions(id, emailAddress, type, role)").Do(c.options...)
 
 		return rerr
 	})
@@ -250,7 +256,7 @@ func (c *Client) Revoke(fileID, email string) error {
 		}
 
 		return googleRetry(func() error {
-			return c.Drive.Permissions.Delete(fileID, p.Id).Do()
+			return c.Drive.Permissions.Delete(fileID, p.Id).Do(c.options...)
 		})
 	}
 
@@ -267,7 +273,7 @@ func (c *Client) TransferOwnership(fileID, email string) error {
 	req := c.Drive.Permissions.Create(fileID, &perm).TransferOwnership(true)
 
 	return googleRetry(func() error {
-		_, err := req.Do()
+		_, err := req.Do(c.options...)
 		return err
 	})
 }
