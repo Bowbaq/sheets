@@ -278,6 +278,10 @@ type ValueUpdateRequest struct {
 }
 
 func (s *Sheet) BatchUpdateFromPositionIface(requests ...*ValueUpdateRequest) error {
+	if len(requests) == 0 {
+		return nil
+	}
+
 	updates := sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "USER_ENTERED",
 	}
@@ -311,9 +315,13 @@ func (s *Sheet) Append(data [][]interface{}) error {
 	})
 }
 
-func (s *Spreadsheet) DoBatch(reqs ...*sheets.Request) (*sheets.BatchUpdateSpreadsheetResponse, error) {
+func (s *Spreadsheet) DoBatch(requests ...*sheets.Request) (*sheets.BatchUpdateSpreadsheetResponse, error) {
+	if len(requests) == 0 {
+		return nil, nil
+	}
+
 	batchUpdateReq := sheets.BatchUpdateSpreadsheetRequest{
-		Requests:                     reqs,
+		Requests:                     requests,
 		IncludeSpreadsheetInResponse: true,
 	}
 
